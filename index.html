@@ -1438,7 +1438,7 @@ function renderPage() {
     /* Both 'all' and a specific category use this view */
     const isAll = state.cat === 'all';
     $('page-title').textContent = isAll ? 'Purge Dashboard' : state.cat;
-    $('page-sub').textContent = (isAll ? 'All Categories' : 'Eligible items') + ' · ' + (state.user?.store || '—');
+    $('page-sub').textContent = (isAll ? 'All Purge Categories' : 'Eligible items') + ' · ' + (state.user?.store || '—');
     begin.style.display = isAll ? '' : 'none';
     stats.style.display = 'none'; /* hidden permanently */
     try { renderCategoryView(); } catch(e) { console.error('[renderCategoryView]', e); }
@@ -2983,7 +2983,15 @@ function renderSuggest(query) {
             return `
               <div class="suggest-size-row" data-sg-pick="${escapeHtml(sku)}">
                 <span class="suggest-size-label">${escapeHtml(size)}</span>
-                <span class="suggest-size-meta">${escapeHtml(sku)}${upc ? ' · ' + escapeHtml(upc) : ''}</span>
+                <span class="suggest-size-meta">${escapeHtml(sku)}</span>
+                ${(() => {
+                  const _oh = parseFloat(r['Store Onhand']||r['Store OH']||0);
+                  const _ps = p && p.skus.find(s => s.sku === sku);
+                  const _rem = _ps ? Math.max(0, (_ps.qty||0) - (_ps.scanned||0)) : 0;
+                  const _ohS = _oh > 0 ? `<span style="font-size:.63rem;color:var(--muted);margin-left:4px">OH:${_oh}</span>` : '';
+                  const _rS = _ps && _rem > 0 ? `<span style="font-size:.63rem;color:var(--blue);font-weight:700;margin-left:4px">${_rem} left</span>` : '';
+                  return _ohS + _rS;
+                })()}
                 ${status ? `<span class="suggest-tag ${status.tag}">${status.label}</span>` : ''}
               </div>`;
           }).join('')}
@@ -3079,12 +3087,29 @@ function openOfflistModal(masterRow, mode) {
         '</div>';
       }).join('') + '</div>';
   }
-  /* In-transit warning — show at top if units are incoming */
+  /* SG15: In-transit — hard block off-list, soft warning on-list */
+  var _inAnyListForIT = (function(){
+    var _p2 = getActive(); if (!_p2) return false;
+    return _p2.skus.some(function(s){ return s.sku===sku || s.upc===upc; });
+  })();
   if (storeIntransit > 0) {
-    guardHtml += '<div style="background:var(--amber-bg);color:var(--amber);border-radius:8px;padding:8px 12px;font-size:.72rem;font-weight:700;margin:4px 0">' +
-      '&#9888; <strong>' + storeIntransit + ' unit' + (storeIntransit===1?'':'s') + ' in-transit</strong> to your store. ' +
-      'You are purging this item while more units are being shipped to you.' +
-    '</div>';
+    if (!_inAnyListForIT) {
+      /* Off-list: hard block */
+      guardHtml += '<div style="background:var(--red-bg);color:var(--red);border-radius:8px;padding:10px 12px;font-size:.78rem;font-weight:700;margin:4px 0">' +
+        '&#128683; <strong>' + storeIntransit + ' unit' + (storeIntransit===1?'':'s') + ' in-transit</strong> to your store. Cannot purge an off-list item while units are being shipped.' +
+      '</div>';
+      setTimeout(function(){
+        var _ab2 = $('offlist-add');
+        if (_ab2) { _ab2.disabled=true; _ab2.style.display='none'; }
+        var _zb2 = document.getElementById('offlist-zero-threshold');
+        if (_zb2) _zb2.style.display='none';
+      }, 0);
+    } else {
+      /* On-list: soft amber warning only */
+      guardHtml += '<div style="background:var(--amber-bg);color:var(--amber);border-radius:8px;padding:8px 12px;font-size:.72rem;font-weight:700;margin:4px 0">' +
+        '&#9888; <strong>' + storeIntransit + ' unit' + (storeIntransit===1?'':'s') + ' in-transit</strong> — on your purge list. Proceed with caution.' +
+      '</div>';
+    }
   }
 
   /* #4: Already at optimal stock — block at open time */
@@ -3133,10 +3158,19 @@ function openOfflistModal(masterRow, mode) {
   $('offlist-qty').textContent = '1';
   /* #4: Disable Add button if already at optimal stock */
   var _addBtn = $('offlist-add');
+  var _zeroBtn2 = document.getElementById('offlist-zero-threshold');
+  var _optBlocked   = storeOH > 0 && maxPurgeable <= 0;
+  var _stapleBlocked = isStaple;
+  var _itOffListBlocked = false; /* set below after intransit check */
   if (_addBtn) {
-    var _blocked = storeOH > 0 && maxPurgeable <= 0;
-    _addBtn.disabled = _blocked;
-    _addBtn.style.opacity = _blocked ? '0.4' : '';
+    var _totalBlocked = _optBlocked || _stapleBlocked;
+    _addBtn.disabled  = _totalBlocked;
+    _addBtn.style.display = _totalBlocked ? 'none' : '';
+  }
+  if (_zeroBtn2) _zeroBtn2.style.display = (_optBlocked && !_stapleBlocked) ? '' : 'none';
+  /* SG7: Hard block message for staple */
+  if (_stapleBlocked) {
+    guardHtml += '<div style="background:var(--red-bg);color:var(--red);border-radius:8px;padding:10px 12px;font-size:.78rem;font-weight:700;margin:4px 0">&#128683; STAPLE item — this product cannot be purged. Contact Ops if removal is required.</div>';
   }
   $('offlist-modal').classList.add('show');
 }
@@ -3776,14 +3810,57 @@ function showKillSpareReview(p) {
 }
 
 function finalizePurge(p) {
-  p.status = 'done'; p.updated = Date.now();
+  p.status = 'pending-done';
+  p.updated = Date.now();
   p.boxes.forEach(b => { b.locked = true; if (!b.trackingNumber) b.trackingNumber = null; });
   persist();
   const cm = $('confirm-modal'); if (cm) cm.classList.remove('show');
   vibrate([60,40,60]);
-  /* Close scan first, then show tracking modal */
   closeScan();
-  setTimeout(function(){ showTrackingModal(p); }, 400);
+
+  /* 60-second undo window */
+  var _ub = document.createElement('div');
+  _ub.id = 'undo-submit-banner';
+  _ub.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;' +
+    'background:var(--ink);color:#fff;padding:14px 16px;' +
+    'display:flex;align-items:center;justify-content:space-between;gap:12px;' +
+    'box-shadow:0 -4px 20px rgba(0,0,0,.3)';
+  _ub.innerHTML =
+    '<div>' +
+      '<div style="font-size:.88rem;font-weight:700">Purge submitted</div>' +
+      '<div style="font-size:.72rem;opacity:.7" id="undo-cd">Undo available for 60s</div>' +
+    '</div>' +
+    '<button id="undo-btn" style="flex-shrink:0;height:36px;padding:0 18px;' +
+      'background:var(--amber);color:#fff;border:none;border-radius:8px;' +
+      'font-family:inherit;font-size:.82rem;font-weight:700;cursor:pointer">Undo</button>';
+  document.body.appendChild(_ub);
+
+  var _sLeft = 60;
+  var _uInt = setInterval(function() {
+    _sLeft--;
+    var cd = document.getElementById('undo-cd');
+    if (cd) cd.textContent = 'Undo available for ' + _sLeft + 's';
+    if (_sLeft <= 0) { clearInterval(_uInt); _commitFinalPurge(p); }
+  }, 1000);
+
+  document.getElementById('undo-btn').onclick = function() {
+    clearInterval(_uInt);
+    p.status = 'pending'; p.updated = Date.now();
+    p.boxes.forEach(function(b){ b.locked = false; });
+    persist();
+    _ub.remove();
+    showToast('ok', 'Submission undone', 'Your purge is back in progress');
+    openPurge(p.id, true);
+  };
+}
+
+function _commitFinalPurge(p) {
+  var _ub2 = document.getElementById('undo-submit-banner');
+  if (_ub2) _ub2.remove();
+  if (p.status !== 'pending-done') return;
+  p.status = 'done'; p.updated = Date.now();
+  persist();
+  setTimeout(function(){ showTrackingModal(p); }, 200);
 }
 
 function showTrackingModal(p) {
