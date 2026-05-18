@@ -2355,6 +2355,11 @@ function getActiveBox() { const p = getActive(); return p ? p.boxes.find(b => b.
 let searchQuery = '';
 
 function openPurge(id, _skipStatus) {
+  /* Always clear any running undo countdown when opening a purge */
+  if (_undoTimer) { clearInterval(_undoTimer); _undoTimer = null; }
+  var _ubClear = document.getElementById('undo-submit-banner');
+  if (_ubClear && _ubClear.parentNode) _ubClear.parentNode.removeChild(_ubClear);
+
   const p = state.purges.find(x => x.id === id);
   if (!p) return;
   if (p.status === 'pending-done') {
