@@ -1,0 +1,1034 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#F2F2F7"/>
+<title>PTM Purge — Demo</title>
+<!--
+  demo.html — State & Liberty Purge Threshold Manager (DEMO build; full standalone app).
+  Same file as ptm-app.html; demo mode is auto-on because the filename contains "demo".
+  Live data from GitHub (JaysonSNL13/mobile-ui-v1). Auto-signs in as SCM.
+  SCAN: tap the dark scan panel to simulate a barcode scan (adds the next item), OR tap
+  the camera icon to open the real camera and scan a barcode not on the list. Every
+  safeguard fires (staple, off-list SG6, not-available / over-count, exclude, unscanned review).
+-->
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=jetbrains-mono@400,500&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#F2F2F7; --card:#fff; --ink:#0B0B0D; --ink2:#20222b; --gray:#8A8A8E; --sep:#E7E7EC; --mut:#B4B4B9; --fill:#EEEEF1;
+    --success:#1E9E52; --warn:#9A6B12; --danger:#D23A2F; --amber:#E8912B;
+    --brown:#6E4A2E; --brown2:#C2772E;
+    --sf:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --ez:cubic-bezier(.32,.72,0,1);
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:var(--sf);color:#15151a;background:var(--bg);display:flex;flex-direction:column;height:100dvh}
+  .device{width:100%;max-width:520px;flex:1 1 auto;min-height:0;margin:0 auto;background:var(--bg);position:relative;display:flex;flex-direction:column}
+  .screen{position:relative;width:100%;flex:1 1 auto;min-height:0;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+  .sb{height:calc(20px + env(safe-area-inset-top));flex:0 0 auto}
+  .stage{position:relative;flex:1;overflow:hidden}
+  .layer{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;transform:translateX(14px);
+    transition:opacity .34s var(--ez),transform .34s var(--ez);pointer-events:none;overflow:hidden}
+  .layer.on{opacity:1;transform:none;pointer-events:auto}
+  .scroll{flex:1;overflow-y:auto;padding:0 17px 24px;-webkit-overflow-scrolling:touch}
+
+  .lt{font-size:33px;font-weight:800;letter-spacing:-.03em;margin:2px 1px 0}
+  .wordmark{font-size:10.5px;letter-spacing:.22em;font-weight:700;color:var(--gray);margin:2px 2px 0}
+  .lt-sub{color:var(--gray);font-size:14px;margin:2px 1px 0;font-weight:500}
+  .ghdr{font-size:12.5px;color:var(--gray);font-weight:600;text-transform:uppercase;letter-spacing:.02em;margin:20px 8px 7px}
+  .group{background:var(--card);border-radius:15px;overflow:hidden}
+  .cell{padding:13px 15px;border-top:.5px solid var(--sep);font-size:16px}
+  .cell:first-child{border-top:none}
+  .cell.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .cell .chev{color:#c7c7cc;font-size:20px;font-weight:600}
+  .cc-h{display:flex;align-items:center;gap:7px;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:4px}
+  .cc-h .ic{width:19px;height:19px;border-radius:5px;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+  .cc p{margin:5px 0;font-size:13.5px;color:#48484c;line-height:1.35}
+  .btn{display:block;text-align:center;border-radius:13px;font-size:17px;font-weight:600;padding:15px;border:none;width:100%;font-family:inherit;cursor:pointer;transition:transform .12s ease,filter .12s ease}
+  .btn:active{transform:scale(.97);filter:brightness(1.6)}
+  .btn-primary{background:var(--ink);color:#fff}
+  .btn-primary:disabled{background:#B9B9BE;color:#fff}
+  .btn-plain{background:transparent;color:var(--ink);font-weight:500}
+  .btn-plain.red{color:var(--danger)}
+  .mt14{margin-top:14px}.mt8{margin-top:8px}
+
+  .nav{height:46px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 8px;position:relative;background:var(--bg);border-bottom:.5px solid var(--sep)}
+  .nav .back{color:var(--ink);font-size:16px;font-weight:500;cursor:pointer;padding:0 6px}
+  .nav .ntitle{position:absolute;left:0;right:0;text-align:center;font-size:16px;font-weight:700;pointer-events:none}
+  .nav .nr{color:var(--ink);font-size:19px;cursor:pointer;padding:0 6px;min-width:26px;text-align:right}
+
+  /* home dashboard (PTM-app style) */
+  .da-pills{display:flex;gap:8px;overflow-x:auto;padding:8px 0 12px;scrollbar-width:none}
+  .da-pills::-webkit-scrollbar{display:none}
+  .da-pill{flex:0 0 auto;padding:8px 15px;border-radius:999px;background:#fff;border:.5px solid var(--sep);color:#3a3a3c;font-size:14px;font-weight:600;white-space:nowrap;cursor:pointer}
+  .da-pill.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .da-storerow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:4px 2px 14px}
+  .da-storelab{font-size:11px;color:var(--gray);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .da-storename{font-size:20px;font-weight:800;letter-spacing:-.02em;color:var(--ink);margin-top:1px}
+  .da-changebtn{background:#fff;border:.5px solid var(--sep);border-radius:10px;padding:9px 14px;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit}
+  .da-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:14px}
+  .da-tile{background:#fff;border:.5px solid var(--sep);border-radius:14px;padding:14px 6px;text-align:center}
+  .da-tile-num{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1}
+  .da-tile-lbl{font-size:10px;color:var(--gray);font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-top:6px}
+  .da-tile.pending .da-tile-num{color:var(--amber)}
+  .da-tile.active .da-tile-num{color:#0A84FF}
+  .da-tile.done .da-tile-num{color:var(--success)}
+  .da-elig-hdr{font-size:12.5px;color:var(--gray);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:20px 4px 3px}
+  .da-elig-sub{font-size:12.5px;color:var(--gray);margin:0 4px 10px;font-weight:500}
+  .da-elig-sub b{color:var(--ink)}
+  .ecard{background:#fff;border:.5px solid var(--sep);border-radius:15px;padding:12px 14px;margin-bottom:9px;display:flex;align-items:center;gap:10px;cursor:pointer}
+  .ecard-info{flex:1;min-width:0}
+  .ecard-name{font-size:14.5px;font-weight:700;color:var(--ink);line-height:1.25}
+  .ecard-cat{font-size:11.5px;color:var(--gray);font-weight:600;margin-top:3px}
+  .ecard-reason{font-size:11.5px;color:var(--gray);margin-top:1px}
+  .ecard-qty{font-size:18px;font-weight:800;color:var(--ink);text-align:right}
+  .ecard-qty small{display:block;font-size:9.5px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;margin-top:1px}
+  .ecard-chev{color:#c7c7cc;font-size:20px;flex:0 0 auto}
+
+  /* scan screen (PTM-app style) */
+  .finder{height:150px;border-radius:16px;background:#0f0f13;position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;margin:12px 0 0}
+  .reticle{width:158px;height:78px;position:relative}
+  .reticle i{position:absolute;width:24px;height:24px;border:3px solid #F4F4F6}
+  .reticle i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0;border-radius:4px 0 0 0}
+  .reticle i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0;border-radius:0 4px 0 0}
+  .reticle i:nth-child(3){bottom:0;left:0;border-right:0;border-top:0;border-radius:0 0 0 4px}
+  .reticle i:nth-child(4){bottom:0;right:0;border-left:0;border-top:0;border-radius:0 0 4px 0}
+  .sline{position:absolute;left:8%;right:8%;top:50%;height:2px;background:rgba(255,255,255,.9);box-shadow:0 0 8px rgba(255,255,255,.45);animation:sl 1.9s var(--ez) infinite}
+  @keyframes sl{0%,100%{transform:translateY(-28px);opacity:.3}50%{transform:translateY(28px);opacity:.95}}
+  .finder .cap{position:absolute;bottom:12px;color:#e3e3e9;font-size:12.5px;font-weight:600}
+  .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+  .flash.go{animation:fl .45s ease}
+  @keyframes fl{0%{opacity:.85}100%{opacity:0}}
+
+  .boxstrip{display:flex;align-items:center;gap:8px;padding:12px 0 4px}
+  .boxtab{flex:0 0 auto;display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:10px;background:#fff;border:.5px solid var(--sep);color:#3a3a3c;font-size:13.5px;font-weight:700;cursor:pointer}
+  .boxtab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .boxtab .cnt{background:rgba(0,0,0,.07);border-radius:999px;padding:1px 7px;font-size:11.5px;font-weight:700}
+  .boxtab.on .cnt{background:rgba(255,255,255,.2)}
+  .boxtab.add{color:var(--gray);font-weight:600}
+  .cambtn{margin-left:auto;flex:0 0 auto;width:40px;height:38px;border-radius:10px;background:#fff;border:.5px solid var(--sep);display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
+  .cambtn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .cambtn svg{width:19px;height:19px}
+  .seg{margin:8px 0 4px;background:#e4e4ea;border-radius:9px;padding:2px;display:flex;font-size:13px;font-weight:600}
+  .seg .o{flex:1;text-align:center;padding:7px;border-radius:7px;color:#48484c;cursor:pointer}
+  .seg .o.on{background:#fff;color:#000;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+
+  .pcard{background:#fff;border:.5px solid var(--sep);border-radius:15px;padding:11px 13px 6px;margin-top:10px}
+  .pcard-h{display:flex;align-items:flex-start;gap:10px}
+  .pname{flex:1;min-width:0;font-size:14.5px;font-weight:700;color:var(--ink);line-height:1.25}
+  .preason{font-size:11.5px;color:var(--gray);font-weight:500;margin-top:2px}
+  .pqty{text-align:right;flex:0 0 auto}
+  .pqty b{font-size:17px;font-weight:800;color:var(--ink)}
+  .pqty small{display:block;font-size:9.5px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;margin-top:1px}
+  .srow{display:flex;align-items:center;gap:10px;background:#F7F7F8;border-radius:11px;padding:10px 12px;margin:8px 0 2px}
+  .srow.done{opacity:.5}
+  .srow.excl{opacity:.55}
+  .ssize{font-weight:700;color:var(--ink);font-size:15px;min-width:30px}
+  .smult{color:var(--gray);font-size:12px;font-weight:600;margin-left:-4px}
+  .scodes{flex:1;min-width:0}
+  .ssku{font-size:12.5px;color:#3a3a3c;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .supc{display:flex;align-items:center;gap:5px;font-size:11px;color:#9A9AA0;margin-top:2px}
+  .copyb{background:none;border:none;color:#9A9AA0;cursor:pointer;padding:0;display:inline-flex}
+  .copyb svg{width:13px;height:13px}
+  .exclb{flex:0 0 auto;background:none;border:none;color:#b6b6bb;cursor:pointer;padding:2px;display:inline-flex}
+  .exclb svg{width:16px;height:16px}
+  .excltag{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--danger);text-transform:uppercase}
+  .empty{color:var(--gray);font-size:13.5px;text-align:center;padding:26px 10px;line-height:1.4}
+  .bar{flex:0 0 auto;padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;border-top:.5px solid var(--sep);background:var(--bg)}
+  .round{width:48px;height:48px;border-radius:13px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--gray);flex:0 0 auto;cursor:pointer;border:.5px solid var(--sep)}
+
+  .scrim{position:absolute;inset:0;background:rgba(0,0,0,.38);opacity:0;pointer-events:none;transition:opacity .3s ease;z-index:20}
+  .scrim.on{opacity:1;pointer-events:auto}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-radius:20px 20px 0 0;padding:8px 17px calc(16px + env(safe-area-inset-bottom));z-index:25;transform:translateY(112%);transition:transform .4s var(--ez);max-height:82%;overflow-y:auto}
+  .sheet.up{transform:none}
+  .grab{width:38px;height:5px;border-radius:3px;background:#c9c9ce;margin:6px auto 12px}
+  .sh-t{font-size:20px;font-weight:800;letter-spacing:-.02em;margin:0 2px 6px}
+  .sh-t.c{text-align:center}
+  .sh-b{font-size:14px;color:#48484c;line-height:1.42;margin:0 2px 8px}
+  .sh-b.c{text-align:center}
+  .sh-sub{font-size:12.5px;color:var(--gray);margin:0 2px 6px}
+  .aic{width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;margin:6px auto 8px;color:#fff;background:var(--ink)}
+  .aic.danger{background:var(--danger)}
+  .aic.warn{background:#FBE3E1;color:var(--danger)}
+  .pcardmini{background:#F7F7F8;border:.5px solid var(--sep);border-radius:13px;padding:13px 15px;text-align:left;margin:6px 0}
+  .pcardmini .id{font-size:15px;font-weight:800;color:var(--ink)}
+  .pcardmini .mt{font-size:12.5px;color:#6b6b70;font-weight:500;margin-top:3px}
+  .bt-orange{background:var(--amber)!important;color:#fff!important}
+  .btn.sub{padding:14px}
+  .numfld{width:70px;text-align:center;border:1px solid var(--sep);border-radius:9px;padding:9px;font-size:16px;font-family:inherit;font-weight:600;color:var(--ink)}
+  .txtfld{width:100%;min-height:92px;padding:12px;border:1px solid var(--sep);border-radius:10px;font-family:inherit;font-size:14px;resize:none;box-sizing:border-box}
+  .bigcheck{width:84px;height:84px;border-radius:50%;background:var(--success);color:#fff;font-size:46px;display:flex;align-items:center;justify-content:center;margin:34px auto 14px;animation:pop .4s var(--ez)}
+  @keyframes pop{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+  .done-t{font-size:26px;font-weight:800;letter-spacing:-.02em;text-align:center}
+  .done-s{color:var(--gray);font-size:14px;margin-top:4px;font-weight:500;text-align:center}
+  .step{display:flex;gap:11px;align-items:flex-start;font-size:14.5px;padding:11px 15px;border-top:.5px solid var(--sep)}
+  .step:first-child{border-top:none}
+  .step .n{flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:#EEEEF1;color:var(--ink);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .hint{font-size:12.5px;color:var(--gray);text-align:center;margin:12px 8px 0;line-height:1.35}
+  .rpill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:#ECECEF;color:#50505a;white-space:nowrap}
+
+  .modalwrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;z-index:50;opacity:0;pointer-events:none;transition:opacity .26s ease}
+  .modalwrap.on{opacity:1;pointer-events:auto}
+  .modalwrap .mbg{position:absolute;inset:0;background:rgba(0,0,0,.44)}
+  .modal{position:relative;background:#fff;border-radius:20px;padding:20px 18px;width:100%;max-width:320px;max-height:80%;overflow-y:auto}
+  .modal .mx{position:absolute;top:14px;right:16px;background:none;border:none;font-size:24px;line-height:1;color:#c7c7cc;cursor:pointer}
+  .modal h3{margin:2px 34px 2px 0;font-size:20px;font-weight:800;text-align:left}
+  .modal .msub{color:var(--gray);font-size:13.5px;margin-bottom:12px}
+  .howstep{display:flex;gap:11px;align-items:flex-start;font-size:14px;padding:7px 0;color:#3a3a3c;line-height:1.38}
+  .howstep .n{flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:var(--gray);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .howstep b{color:var(--ink)}
+
+  .toast{position:absolute;left:50%;bottom:88px;transform:translateX(-50%) translateY(20px);background:rgba(20,20,22,.94);color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:60;max-width:88%;text-align:center}
+  .toast.on{opacity:1;transform:translateX(-50%)}
+
+  .fld{width:100%;border:none;background:transparent;font-size:16px;font-family:inherit;color:var(--ink);outline:none;padding:0}
+  .fld::placeholder{color:var(--mut)}
+  .chdr{font-size:12.5px;color:var(--gray);font-weight:600;text-transform:uppercase;letter-spacing:.02em;margin:18px 8px 7px}
+  .cnote{font-size:12px;color:#70707a;margin:0 6px 8px;line-height:1.35}
+  .cnote .w{color:var(--warn);font-weight:600}
+  .cpill-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+  .cpill{padding:11px 4px;border-radius:11px;background:#fff;border:.5px solid var(--sep);color:#48484c;font-weight:700;font-size:14px;text-align:center;cursor:pointer}
+  .cpill.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .klabel{font-size:14.5px;font-weight:500}
+  .khint{font-size:11.5px;color:var(--gray);margin-top:2px}
+  .kv{display:flex;align-items:center;gap:5px;color:var(--gray);font-size:13px;flex:0 0 auto}
+  .kv input{width:54px;text-align:right;border:none;background:var(--fill);border-radius:8px;padding:7px 8px;font-size:15px;color:var(--ink);font-family:inherit;font-weight:600}
+  .csw{position:relative;width:48px;height:29px;flex:0 0 auto;display:inline-block}
+  .csw input{opacity:0;width:0;height:0;position:absolute}
+  .csw .tr{position:absolute;inset:0;background:#E4E4EA;border-radius:999px;transition:.2s}
+  .csw .kn{position:absolute;top:2px;left:2px;width:25px;height:25px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+  .csw input:checked ~ .tr{background:var(--success)}
+  .csw input:checked ~ .kn{transform:translateX(19px)}
+  .addrow{display:flex;align-items:center;gap:9px}
+  .addbtn{flex:0 0 auto;background:var(--ink);color:#fff;border:none;border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
+  .xdel{background:transparent;border:none;color:var(--danger);font-size:21px;line-height:1;cursor:pointer;padding:0 2px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 2px 8px}
+  .chips .lbl{width:100%;font-size:11.5px;color:var(--gray);margin-bottom:1px}
+  .schip{background:var(--fill);border-radius:999px;padding:6px 11px;font-size:12px;cursor:pointer;color:#3a3a3c}
+  .schip b{color:var(--ink)}
+  pre.cpre{display:none;background:#0f0f13;border-radius:12px;padding:12px;color:#cfe3d6;font-family:var(--mono);font-size:11px;overflow:auto;white-space:pre-wrap;margin-top:12px}
+
+  /* ============ SCM CONTROL PANEL — State & Liberty internal-tool design system ============ */
+  #settings{ --k-ink:#000; --k-muted:#7a7a7a; --k-line:#e5e5e5; --k-green:#1e7a46; --k-amber:#b7791f; --k-red:#c0392b;
+    --k-ui:'Satoshi',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif; --k-mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace; background:#fff; }
+  #settings, #settings *{ font-family:var(--k-ui); }
+  #settings .nav{ background:#fff; border-bottom:2px solid var(--k-ink); }
+  #settings .nav .back, #settings .nav .ntitle{ color:var(--k-ink); }
+  #settings .scroll{ background:#fff; }
+  #settings .sk-head{ border-bottom:2px solid var(--k-ink); padding-bottom:10px; margin-top:6px; }
+  #settings .sk-head h1{ margin:0; font-weight:700; font-size:22px; letter-spacing:-.01em; color:var(--k-ink); }
+  #settings .sk-head .sk-sub{ color:var(--k-muted); font-size:12px; margin-top:3px; }
+  #settings .chdr{ color:var(--k-muted); font-weight:800; font-size:11px; letter-spacing:.06em; border-bottom:1px solid var(--k-line); padding-bottom:5px; margin:24px 0 8px; }
+  #settings .cnote{ color:var(--k-muted); font-size:12px; }
+  #settings .cnote .w{ color:var(--k-amber); }
+  #settings .group{ background:#fff; border:1px solid var(--k-line); border-radius:2px; }
+  #settings .cell{ border-top:1px solid var(--k-line); background:#fff; font-size:13.5px; }
+  #settings .cell:first-child{ border-top:none; }
+  #settings .klabel{ font-weight:500; font-size:13.5px; color:var(--k-ink); }
+  #settings .khint{ color:var(--k-muted); font-size:11px; }
+  #settings .kv{ color:var(--k-muted); font-family:var(--k-mono); }
+  #settings .kv input{ font-family:var(--k-mono); background:#fff; border:1px solid var(--k-line); border-radius:2px; color:var(--k-ink); }
+  /* Period → raised 3D outlined boxes (hard-offset shadow) */
+  #settings .cpill-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:9px; border:0; }
+  #settings .cpill{ border:1.5px solid var(--k-ink); border-radius:4px; background:#fff; color:var(--k-ink);
+    font-family:var(--k-mono); font-weight:700; font-size:13px; padding:11px 4px;
+    box-shadow:3px 3px 0 var(--k-ink); transition:transform .06s ease, box-shadow .06s ease; }
+  #settings .cpill:active{ transform:translate(3px,3px); box-shadow:0 0 0 var(--k-ink); }
+  #settings .cpill.on{ background:var(--k-ink); color:#fff; box-shadow:none; transform:translate(3px,3px); }
+  /* Toggles → green when on (kit state color) */
+  #settings .csw input:checked ~ .tr{ background:var(--k-green); }
+  /* Buttons → kit outline style */
+  #settings .addbtn{ background:#fff; color:var(--k-ink); border:1px solid var(--k-ink); border-radius:0; text-transform:uppercase; font-weight:700; font-size:10.5px; letter-spacing:.05em; padding:7px 12px; }
+  #settings .addbtn:active{ background:var(--k-ink); color:#fff; }
+  #settings .btn-primary{ background:#fff; color:var(--k-ink); border:1px solid var(--k-ink); border-radius:0; text-transform:uppercase; font-weight:700; font-size:11px; letter-spacing:.05em; }
+  #settings .btn-primary:active{ background:var(--k-ink); color:#fff; filter:none; }
+  #settings .btn-plain.red{ color:var(--k-red); }
+  #settings .fld{ font-family:var(--k-ui); color:var(--k-ink); }
+  #settings .schip{ background:#f4f4f2; border:1px solid var(--k-line); border-radius:3px; font-family:var(--k-mono); color:var(--k-ink); }
+  #settings .schip b{ color:var(--k-ink); }
+  #settings .chips .lbl{ color:var(--k-muted); }
+  #settings .xdel{ color:var(--k-red); }
+  #settings .empty{ color:var(--k-muted); font-family:var(--k-mono); border:1px solid var(--k-line); border-radius:2px; padding:16px; }
+  #settings .hint{ color:var(--k-muted); font-family:var(--k-mono); }
+</style>
+</head>
+<body>
+  <!-- ============ NOTE FOR DEV TEAM (visible on open; dismissible) ============ -->
+  <div id="dev-note" style="position:relative;z-index:5;flex:0 0 auto;background:#FEF3C7;color:#3a2f0b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.45;padding:11px 36px 11px 14px;border-bottom:1px solid #F0D98A;box-shadow:0 1px 5px rgba(0,0,0,.12)">
+    <b>Note for the dev team.</b> This build adds an <b>SCM Control Panel</b> (visible to SCM users only) where SCM can: turn <b>Dry Run on/off per store</b>; turn <b>Purge Categories on/off</b> (One Off, Non Moving, Slow Moving, Seasonal); change the selected <b>Non-Moving period</b> — with added shorter windows <b>15 / 20 / 25</b> days alongside 30 / 45 / 60 / 90; and manage <b>SCM exclusions</b> (all-store and per-store). <b>Please do NOT change how the app scans or its safeguards</b> — the scan flow and safeguards are the ones Yash already approved. Only the <b>UI / format</b> and the <b>SCM Control Panel</b> are changed here.
+    <button onclick="this.parentNode.remove()" aria-label="Dismiss" style="position:absolute;top:7px;right:9px;background:none;border:none;font-size:19px;color:#3a2f0b;cursor:pointer;line-height:1">&times;</button>
+  </div>
+  <div class="device"><div class="screen">
+    <div class="sb"></div>
+    <div class="stage">
+
+      <!-- LOGIN (fallback only; app auto-signs in as SCM) -->
+      <div class="layer" id="login">
+        <div class="scroll" style="display:flex;flex-direction:column;justify-content:center">
+          <div style="text-align:center;margin-bottom:22px">
+            <div class="wordmark" style="margin-bottom:4px">STATE &amp; LIBERTY</div>
+            <div class="lt" style="font-size:42px">Purge</div>
+          </div>
+          <div class="group">
+            <div class="cell"><input class="fld" id="lg-user" placeholder="Username" autocapitalize="off" autocomplete="username" spellcheck="false" value="SCM"></div>
+            <div class="cell"><input class="fld" id="lg-pass" type="password" placeholder="Password" autocomplete="current-password" value="SCM2"></div>
+          </div>
+          <div id="lg-err" style="display:none;color:var(--danger);font-size:13px;text-align:center;margin-top:10px;font-weight:600"></div>
+          <button class="btn btn-primary mt14" id="lg-btn">Sign in</button>
+          <div class="hint" id="lg-hint">Loading…</div>
+        </div>
+      </div>
+
+      <!-- HOME -->
+      <div class="layer" id="home">
+        <div class="scroll">
+          <div class="wordmark">STATE &amp; LIBERTY</div>
+          <div class="lt">Purge</div>
+          <div class="lt-sub" id="home-store">—</div>
+          <div class="ghdr">Before you start</div>
+          <div class="group"><div class="cell cc">
+            <div class="cc-h"><span class="ic">!</span> Cycle counts</div>
+            <p>Finish any purge at least a day before the count begins.</p>
+            <p>Purging the same day? Wait until the count is done and adjusted.</p>
+            <p>Make sure FedEx has picked up before you count.</p>
+          </div></div>
+          <button class="btn btn-primary mt14" onclick="beginPurge()">Begin Purge</button>
+          <div class="group mt14">
+            <div class="cell row" onclick="go('browse');renderBrowse();"><span>View eligible items</span><span class="chev">›</span></div>
+            <div class="cell row" onclick="go('history')"><span>Purge History</span><span class="chev">›</span></div>
+            <div class="cell row" onclick="openHowto()"><span>How to use</span><span class="chev">›</span></div>
+          </div>
+          <div id="home-scm" style="display:none">
+            <div class="ghdr">SCM</div>
+            <div class="group">
+              <div class="cell row" onclick="openStorePicker()"><span>Switch Store</span><span class="chev">›</span></div>
+              <div class="cell row" onclick="openSettings()"><span>SCM Control Panel</span><span class="chev">›</span></div>
+            </div>
+          </div>
+          <button class="btn btn-plain mt14" onclick="signOut()">Sign out</button>
+        </div>
+      </div>
+
+      <!-- BROWSE (category dashboard, PTM-app style) -->
+      <div class="layer" id="browse">
+        <div class="nav"><span class="back" onclick="go('home')">‹ Purge</span><span class="ntitle" id="browse-store">—</span><span class="nr"></span></div>
+        <div class="scroll">
+          <div class="da-pills" id="da-pills"></div>
+          <div class="da-storerow">
+            <div><div class="da-storelab">Store</div><div class="da-storename" id="da-storename">—</div></div>
+            <button class="da-changebtn" id="da-change">Change store</button>
+          </div>
+          <div class="da-tiles">
+            <div class="da-tile pending"><div class="da-tile-num" id="da-pending">0</div><div class="da-tile-lbl">Pending</div></div>
+            <div class="da-tile active"><div class="da-tile-num" id="da-active">0</div><div class="da-tile-lbl">Active</div></div>
+            <div class="da-tile done"><div class="da-tile-num" id="da-done">0</div><div class="da-tile-lbl">Done Today</div></div>
+          </div>
+          <button class="btn btn-primary" onclick="beginPurge()">▶ Begin Purge</button>
+          <div class="da-elig-hdr">Eligible Items</div>
+          <div class="da-elig-sub" id="da-eligsub">—</div>
+          <div id="da-list"></div>
+        </div>
+      </div>
+
+      <!-- HISTORY -->
+      <div class="layer" id="history">
+        <div class="nav"><span class="back" onclick="go('home')">‹ Purge</span><span class="ntitle">History</span><span class="nr"></span></div>
+        <div class="scroll">
+          <div class="ghdr" style="margin-top:6px">Recent</div>
+          <div class="group">
+            <div class="cell row"><div><div class="iname" style="font-weight:600">One Off</div><div class="preason">Jul 21 · 2 boxes · 22 units</div></div><span class="rpill">Submitted</span></div>
+            <div class="cell row"><div><div class="iname" style="font-weight:600">Non Moving</div><div class="preason">Jul 14 · 3 boxes · 41 units</div></div><span class="rpill">Submitted</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCAN -->
+      <div class="layer" id="scan">
+        <div class="nav"><span class="back" onclick="go('browse')">‹ Back</span><span class="ntitle" id="scan-title">One Off</span><span class="nr"></span></div>
+        <div class="scroll">
+          <div class="finder" id="finder" onclick="onFinderTap()" style="display:none">
+            <video id="scan-video" playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none"></video>
+            <div class="reticle" id="reticle"><i></i><i></i><i></i><i></i><div class="sline"></div></div>
+            <span class="cap" id="finder-cap">Point at a barcode</span>
+            <div class="flash" id="flash"></div>
+          </div>
+          <div class="boxstrip" id="boxstrip"></div>
+          <div class="seg"><div class="o on" id="tab-list" onclick="setTab('list')">To Purge <span id="tp-count">0/0</span></div><div class="o" id="tab-box" onclick="setTab('box')">Current Box <span id="cb-count">0</span></div></div>
+          <div id="scanbody"><div class="empty">Loading…</div></div>
+        </div>
+        <div class="bar">
+          <button class="btn btn-primary" style="flex:1" id="confirmBtn" onclick="confirmPurge()" disabled>✓ Confirm Purge</button>
+          <div class="round" onclick="undoLast()" title="Undo">↺</div>
+        </div>
+      </div>
+
+      <!-- SUCCESS -->
+      <div class="layer" id="success">
+        <div class="scroll">
+          <div class="bigcheck">✓</div>
+          <div class="done-t">Purge submitted</div>
+          <div class="done-s" id="doneSub">—</div>
+          <div class="group mt14">
+            <div class="step"><span class="n">1</span><span>Bag each item, tag facing the front.</span></div>
+            <div class="step"><span class="n">2</span><span>Your FedEx label's in your email — print &amp; stick one per box.</span></div>
+            <div class="step"><span class="n">3</span><span>Write the transfer number on the box.</span></div>
+            <div class="step"><span class="n">4</span><span>Call FedEx to book the pickup.</span></div>
+          </div>
+          <button class="btn btn-primary mt14" onclick="go('home')">Done</button>
+        </div>
+      </div>
+
+      <!-- SETTINGS / CONTROL PANEL -->
+      <div class="layer" id="settings">
+        <div class="nav"><span class="back" onclick="go('home')">‹ Purge</span><span class="ntitle">Settings</span><span class="nr"></span></div>
+        <div class="scroll">
+          <div class="sk-head"><h1>SCM Control Panel</h1><div class="sk-sub">Dry run · categories · period · knobs · exclusions — preview-only</div></div>
+
+          <div class="chdr">Purge Categories</div>
+          <div class="cnote">Turn a list on or off. Off lists are hidden from the purge picker.</div>
+          <div class="group" id="cp-cats"></div>
+
+          <div class="chdr">Non-Moving Period</div>
+          <div class="cnote">Window used to judge "no / low sales." <span class="w">15 / 20 / 25 need dev-side sales windows.</span></div>
+          <div class="cpill-grid" id="cp-period"></div>
+
+          <div class="chdr">Purge Logic</div>
+          <div class="group">
+            <div class="cell row"><div><div class="klabel">Recent-restock window</div><div class="khint">Shields a recently restocked item</div></div><div class="kv"><input id="cp-recentDays" type="number" min="0" value="30"><span>days</span></div></div>
+            <div class="cell row"><div><div class="klabel">Incoming-PO horizon</div><div class="khint">PO arriving within this spares One-Off</div></div><div class="kv"><input id="cp-incomingDays" type="number" min="0" value="50"><span>days</span></div></div>
+            <div class="cell row"><div><div class="klabel">One-Off size coverage</div><div class="khint">Below this % of sizes → One-Off</div></div><div class="kv"><input id="cp-sizePct" type="number" min="1" max="100" value="50"><span>%</span></div></div>
+            <div class="cell row"><div><div class="klabel">Zero-vs-Slow cutoff</div><div class="khint">≥ this many sold → not flagged</div></div><div class="kv"><input id="cp-slowCut" type="number" min="1" value="2"><span>units</span></div></div>
+          </div>
+
+          <div class="chdr">Per-Store Dry Run</div>
+          <div class="cnote">Dry-run stores show their purge list but block submission.</div>
+          <div class="group" id="cp-dry"></div>
+
+          <div class="chdr">All-Store Exclusions</div>
+          <div class="group"><div class="cell"><div class="addrow"><input class="fld" id="cp-allSearch" list="cp-prodList" autocomplete="off" placeholder="Search a product to exclude…"><button class="addbtn" id="cp-allAdd">Add</button></div></div></div>
+          <div class="group mt8" id="cp-allList"></div>
+          <button class="btn btn-plain red mt8" id="cp-allReset">Reset all-store exclusions</button>
+
+          <div class="chdr">Per-Store Exclusions</div>
+          <div id="cp-summary" class="chips"></div>
+          <div class="group">
+            <div class="cell"><input class="fld" id="cp-storeSel" list="cp-storeList" autocomplete="off" placeholder="Search a store…"></div>
+            <div class="cell"><div class="addrow"><input class="fld" id="cp-storeSearch" list="cp-prodList" autocomplete="off" placeholder="Search a product to exclude…"><button class="addbtn" id="cp-storeAdd">Add</button></div></div>
+          </div>
+          <div class="group mt8" id="cp-storeList2"></div>
+          <button class="btn btn-plain red mt8" id="cp-storeReset">Reset ALL per-store exclusions</button>
+
+          <datalist id="cp-storeList"></datalist>
+          <datalist id="cp-prodList"></datalist>
+
+          <button class="btn btn-primary mt14" id="cp-preview">Preview settings</button>
+          <div id="cp-status" class="hint"></div>
+          <pre class="cpre" id="cp-pre"></pre>
+        </div>
+      </div>
+
+      <!-- SHEETS -->
+      <div class="scrim" id="scrim" onclick="closeSheets()"></div>
+
+      <div class="sheet" id="picker">
+        <div class="grab"></div>
+        <div class="sh-t c">Begin Purge</div>
+        <div class="sh-sub" style="text-align:center">Choose a Purge List.</div>
+        <div class="group mt8" id="picker-list"></div>
+        <button class="btn btn-plain mt8" onclick="closeSheets()">Cancel</button>
+      </div>
+
+      <div class="sheet" id="storepick">
+        <div class="grab"></div>
+        <div class="sh-t">Switch store</div>
+        <div class="cell" style="padding:0 2px 8px"><input class="fld" id="sp-search" placeholder="Search a store…" oninput="renderStorePick()" style="background:var(--card);border-radius:12px;padding:11px 13px"></div>
+        <div class="group" id="sp-list" style="max-height:52vh;overflow-y:auto"></div>
+        <button class="btn btn-plain mt8" onclick="closeSheets()">Cancel</button>
+      </div>
+
+      <div class="sheet" id="staple">
+        <div class="grab"></div>
+        <div class="aic danger">⦸</div>
+        <div class="sh-t c">Can't purge a staple</div>
+        <p class="sh-b c" id="staple-msg">This is a core staple, so it can't be purged without Ops approval.</p>
+        <button class="btn btn-primary bt-orange mt14" onclick="flagFromStaple()">⚑ Flag for Ops Review</button>
+        <button class="btn btn-plain mt8" onclick="closeSheets()">Cancel</button>
+      </div>
+
+      <!-- NOT AVAILABLE TO PURGE -->
+      <div class="sheet" id="notsys">
+        <div class="grab"></div>
+        <div class="aic warn">⚠</div>
+        <div class="sh-t c" style="font-size:22px">NOT AVAILABLE TO PURGE</div>
+        <p class="sh-b c" id="notsys-msg">Brightpearl shows 0 on hand here.</p>
+        <div style="text-align:center;font-weight:700;font-size:15px" id="notsys-name">—</div>
+        <div style="text-align:center;color:var(--gray);font-size:12.5px;margin-bottom:8px" id="notsys-meta">—</div>
+        <p class="sh-b c">If you physically have it, enter how many — it goes in the box (not on the transfer) and we'll flag Ops to fix the count.</p>
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
+          <span style="font-size:14px">How many do you have?</span>
+          <input class="numfld" id="notsys-qty" type="number" min="1" value="1">
+        </div>
+        <button class="btn btn-primary bt-orange" onclick="flagFromNotsys()">⚑ Flag for Ops</button>
+        <button class="btn btn-plain mt8" onclick="closeSheets()">Cancel</button>
+      </div>
+
+      <!-- FLAG FOR OPS REVIEW -->
+      <div class="sheet" id="flagops">
+        <div class="grab"></div>
+        <div class="sh-t c">Flag for Ops Review</div>
+        <div class="sh-sub" style="text-align:center" id="flag-sub">— describe the issue for Ops.</div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray);margin:6px 2px 6px">Note to Ops <span style="text-transform:none;font-weight:500">(optional)</span></div>
+        <textarea class="txtfld" id="flag-note" placeholder="Describe the issue…"></textarea>
+        <button class="btn btn-primary bt-orange mt14" onclick="submitFlag()">Submit Flag</button>
+        <button class="btn btn-plain mt8" onclick="closeSheets()">Cancel</button>
+      </div>
+
+      <!-- EXCLUDE REASON -->
+      <div class="sheet" id="exclreason">
+        <div class="grab"></div>
+        <div class="sh-t c">Exclude Item</div>
+        <div class="sh-sub" style="text-align:center" id="excl-sub">— why keep it back?</div>
+        <div class="group mt8" id="excl-reasons"></div>
+        <textarea class="txtfld mt8" id="excl-other" placeholder="Add a comment…" style="display:none;min-height:64px"></textarea>
+        <button class="btn btn-plain mt8" onclick="closeSheets()">Cancel</button>
+      </div>
+
+      <!-- OFF-LIST (SG6): item not on this store's list -->
+      <div class="sheet" id="offlist">
+        <div class="grab"></div>
+        <div class="sh-t c">Not on your list</div>
+        <div style="text-align:center;font-weight:700;font-size:15px" id="offlist-name">—</div>
+        <div style="text-align:center;color:var(--gray);font-size:12.5px;margin-bottom:8px" id="offlist-meta">—</div>
+        <p class="sh-b c">This item isn't on the purge list for this store. Add it off-transfer and flag Ops to check?</p>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray);margin:2px 2px 6px">Reason</div>
+        <select class="numfld" id="offlist-reason" style="width:100%;text-align:left;background:#fff" onchange="offlistReasonChange()">
+          <option value="" disabled selected>— Select a reason —</option>
+          <option>Overstock</option><option>Damaged</option><option>Slow Moving</option><option>HQ Request</option><option>Other</option>
+        </select>
+        <textarea class="txtfld mt8" id="offlist-other" placeholder="Describe the reason…" style="display:none;min-height:64px"></textarea>
+        <button class="btn btn-primary bt-orange mt14" onclick="addOfflist()">Add &amp; Flag Ops</button>
+        <button class="btn btn-plain mt8" onclick="closeSheets()">Cancel</button>
+      </div>
+
+      <!-- UNSCANNED REVIEW (SG12): items left on the list at submit -->
+      <div class="sheet" id="unscanned">
+        <div class="grab"></div>
+        <div class="sh-t c">Review remaining items</div>
+        <div class="sh-sub" style="text-align:center">These weren't scanned. Give each a reason to leave it out, then submit.</div>
+        <div class="group mt8" id="unscanned-list" style="max-height:46vh;overflow-y:auto"></div>
+        <button class="btn btn-primary mt14" onclick="submitAfterReview()">Exclude these &amp; Submit</button>
+        <button class="btn btn-plain mt8" onclick="closeSheets()">Go back &amp; keep scanning</button>
+      </div>
+
+      <!-- ACTIVE PURGE (resume) -->
+      <div class="sheet" id="active">
+        <div class="grab"></div>
+        <div class="sh-t c">Active Purge</div>
+        <div class="sh-sub" style="text-align:center">You have a purge in progress. What would you like to do?</div>
+        <div class="pcardmini"><div class="id" id="ap-id">—</div><div class="mt" id="ap-meta">—</div></div>
+        <button class="btn btn-primary" onclick="resumeActive()">Resume Purge</button>
+        <button class="btn btn-plain mt8" style="background:#fff;border:.5px solid var(--sep)" onclick="startNewActive()">Start New Purge</button>
+        <button class="btn btn-plain mt8" style="background:var(--fill)" onclick="closeSheets()">Close</button>
+        <button class="btn btn-plain red mt8" style="background:#FDECEC" onclick="deleteActive()">Cancel &amp; Delete Purge</button>
+      </div>
+
+      <!-- HOW-TO MODAL -->
+      <div class="modalwrap" id="howtoWrap">
+        <div class="mbg" onclick="closeHowto()"></div>
+        <div class="modal">
+          <button class="mx" onclick="closeHowto()">×</button>
+          <h3>How to use</h3>
+          <div class="msub">A quick recap before you start.</div>
+          <div class="howstep"><span class="n">1</span><span>Tap <b>Begin Purge</b>.</span></div>
+          <div class="howstep"><span class="n">2</span><span>Choose your purge list, or pick <b>Free Purge</b> to scan anything.</span></div>
+          <div class="howstep"><span class="n">3</span><span>Tap the camera and start scanning — follow the list, or for a free scan just scan whatever you want to purge.</span></div>
+          <div class="howstep"><span class="n">4</span><span>If some items won't be purged, exclude them with a reason and purge the rest.</span></div>
+          <div class="howstep"><span class="n">5</span><span>If something can't be purged, a pop-up explains why. Flag it for Ops review; once Ops approves, you can purge it next time.</span></div>
+          <div class="howstep"><span class="n">6</span><span>Tap <b>Submit</b> when done — it auto-creates the transfer in Brightpearl and sends the confirmation email.</span></div>
+          <button class="btn btn-primary mt14" onclick="gotIt()">Got it — continue</button>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+    </div>
+  </div></div>
+
+<script>
+  var WEBAPP='https://script.google.com/macros/s/AKfycbxW_rqlXp7KzU5DNMxz583EMulcv240L4wSy2CAmfeIaEZjHdRkUqofy90s2rLhGR_WVA/exec';
+  var DATA='https://raw.githubusercontent.com/JaysonSNL13/mobile-ui-v1/main/data';
+  var CATS=['One Off','Non Moving','Slow Moving','Seasonal'];
+  var IDX=null, USER=null, STORE=null, SD=null, curCat='One Off', curRows=[], cameFromBegin=false, spInitial=false;
+  var boxes=[{id:1}], activeBox=0, scanTab='list', undoStack=[], camOn=false;
+  var flagCtx=null;
+  /* DEMO mode: on when the file/URL contains "demo" (demo.html). Tapping the scan panel
+     simulates barcode scans so the whole flow + every safeguard is testable with no camera. */
+  var DEMO = /demo/i.test((location.pathname||'')+(location.search||''));
+  var demoQueue=[];
+  function el(id){return document.getElementById(id);}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];});}
+  function go(id){['login','home','browse','history','scan','success','settings'].forEach(function(s){el(s).classList.toggle('on',s===id);}); if(id!=='scan') stopScanner();}
+  function toast(m){var t=el('toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on');},1600);}
+  function flash(){var f=el('flash');if(!f)return;f.classList.remove('go');void f.offsetWidth;f.classList.add('go');}
+
+  if(DEMO){ var _dn=el('dev-note'); if(_dn) _dn.insertAdjacentHTML('beforeend','<div style="margin-top:7px;font-weight:800">DEMO BUILD — tap the dark scan panel to simulate a scan (no camera). It walks the list and pops each safeguard: staple, off-list, not-available, then the unscanned review at submit. Or tap the camera icon to scan a real barcode.</div>'); }
+
+  /* -------- boot: load users + stores, then auto sign-in as SCM -------- */
+  fetch(DATA+'/index.json?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
+    IDX=j; el('lg-hint').textContent='Use your store or SCM login.';
+    autoLoginSCM();
+  }).catch(function(){ el('lg-hint').textContent='Could not reach server. Check connection.'; go('login'); });
+
+  function autoLoginSCM(){
+    if(!IDX||!IDX.users){ go('login'); return; }
+    var m=IDX.users.find(function(x){return String(x.username||'').toLowerCase()==='scm';})
+        ||IDX.users.find(function(x){return String(x.username||'').toLowerCase().indexOf('scm')>=0;});
+    if(!m){ go('login'); return; }
+    var isAll=m.store==='All Stores' || !(IDX.stores||[]).includes(m.store);
+    USER={username:m.username, store:m.store, isSCM:true, isAll:isAll};
+    var store=(!isAll && m.store) ? m.store : ((IDX.stores||[])[0]||'');
+    if(store){ loadStore(store); } else { go('login'); }
+  }
+
+  /* -------- manual login (fallback) -------- */
+  el('lg-btn').onclick=doLogin;
+  el('lg-pass').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
+  function doLogin(){
+    var err=el('lg-err'); err.style.display='none';
+    if(!IDX||!IDX.users){err.textContent='Still loading — try again in a moment.';err.style.display='block';return;}
+    var u=(el('lg-user').value||'').trim(), p=(el('lg-pass').value||'');
+    if(!u||!p){err.textContent='Enter your username and password.';err.style.display='block';return;}
+    var m=IDX.users.find(function(x){return String(x.username||'').toLowerCase()===u.toLowerCase() && String(x.password||'')===p;});
+    if(!m){err.textContent='Incorrect username or password.';err.style.display='block';return;}
+    var isSCM=String(m.username).toLowerCase().indexOf('scm')>=0;
+    var isAll=m.store==='All Stores' || !(IDX.stores||[]).includes(m.store);
+    USER={username:m.username, store:m.store, isSCM:isSCM, isAll:isAll};
+    if(isSCM||isAll){ spInitial=true; openStorePicker(); }
+    else { STORE=m.store; loadStore(STORE); }
+  }
+  function signOut(){USER=null;STORE=null;SD=null;go('login');}
+
+  /* -------- store loading -------- */
+  function loadStore(name){
+    STORE=name;
+    el('home-store').textContent=name;
+    el('browse-store').textContent=name;
+    el('da-storename').textContent=name;
+    el('home-scm').style.display=(USER&&(USER.isSCM||USER.isAll))?'block':'none';
+    el('da-change').style.display=(USER&&(USER.isSCM||USER.isAll))?'':'none';
+    go('home');
+    var slug=name.replace(/[^a-zA-Z0-9]/g,'-');
+    fetch(DATA+'/'+slug+'.json?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
+      SD=j; renderBrowse(); if(el('scan').classList.contains('on')) renderScanBody();
+    }).catch(function(){SD={data:[]};renderBrowse();});
+  }
+
+  /* -------- store picker (SCM) -------- */
+  function openStorePicker(){ renderStorePick(); openSheet('storepick'); }
+  function renderStorePick(){
+    var b=el('sp-list'); if(!b) return; b.innerHTML='';
+    var q=(el('sp-search').value||'').toLowerCase();
+    var list=((IDX&&IDX.stores)||[]).filter(function(s){return s.toLowerCase().indexOf(q)>=0;});
+    if(!list.length){b.innerHTML='<div class="empty">No stores.</div>';return;}
+    list.forEach(function(s){var c=document.createElement('div');c.className='cell row';c.innerHTML='<span>'+esc(s)+'</span><span class="chev">›</span>';c.onclick=function(){closeSheets();spInitial=false;loadStore(s);};if(s===STORE){c.style.fontWeight='700';}b.appendChild(c);});
+  }
+
+  /* -------- category → items -------- */
+  function inCat(r,cat){
+    var x=(r['Reason']||'').trim();
+    if(cat==='One Off')   return r['oneOffEligible']===true || ['Product Killed','One Off','Replenishment not incoming for 2+ months'].indexOf(x)>=0;
+    if(cat==='Non Moving')return x==='Zero Sales (45d)' || x==='Non-Moving Inventory';
+    if(cat==='Slow Moving')return x==='Minimal Sales (45d)';
+    if(cat==='Seasonal')  return x.indexOf('Seasonal')===0;
+    return false;
+  }
+  function catRows(cat){
+    var rows=(SD&&SD.data)?SD.data:[];
+    return rows.filter(function(r){return inCat(r,cat) && (parseFloat(r['Store Onhand'])||0)>0;});
+  }
+  function rowTarget(r){ return Math.max(1, parseInt(r['Purge Quantity'])||parseInt(r['Store Onhand'])||1); }
+  function displayReason(x){ x=(x||'').trim(); if(x==='Zero Sales (45d)')return 'No sales in 45 days'; if(x==='Minimal Sales (45d)')return 'Low sales in 45 days'; return x||'Eligible to purge'; }
+
+  /* -------- BROWSE dashboard -------- */
+  function renderBrowse(){
+    /* pills */
+    var pb=el('da-pills'); pb.innerHTML='';
+    var cats=['all'].concat(CATS.filter(function(c){return cpCats[c];}));
+    cats.forEach(function(c){var p=document.createElement('div');p.className='da-pill'+(curCat===c?' on':'');p.textContent=c==='all'?'All Categories':c;p.onclick=function(){curCat=c;renderBrowse();};pb.appendChild(p);});
+    var fp=document.createElement('div');fp.className='da-pill';fp.textContent='Free Purge';fp.onclick=function(){beginPurge();};pb.appendChild(fp);
+    /* items */
+    var rows = curCat==='all' ? allCatRows() : catRows(curCat);
+    var groups = groupByParent(rows);
+    var totalUnits = rows.reduce(function(s,r){return s+rowTarget(r);},0);
+    el('da-pending').textContent=groups.length;
+    el('da-active').textContent='0';
+    el('da-done').textContent='0';
+    el('da-eligsub').innerHTML='<b>'+groups.length+'</b> styles · <b>'+rows.length+'</b> SKUs · <b>'+totalUnits+'</b> units';
+    var lb=el('da-list'); lb.innerHTML='';
+    if(!SD){lb.innerHTML='<div class="empty">Loading store data…</div>';return;}
+    if(!groups.length){lb.innerHTML='<div class="empty">No eligible items in '+(curCat==='all'?'any category':curCat)+' for '+STORE+'.</div>';return;}
+    groups.forEach(function(g){
+      var qty=g.items.reduce(function(s,r){return s+rowTarget(r);},0);
+      var cat = curCat==='all' ? (g.items[0]._cat||'') : curCat;
+      var reason=uniq(g.items.map(function(r){return displayReason(r['Reason']);})).join(' · ');
+      var c=document.createElement('div');c.className='ecard';
+      c.innerHTML='<div class="ecard-info"><div class="ecard-name">'+esc(g.name)+'</div>'+
+        (cat?'<div class="ecard-cat">'+esc(cat)+'</div>':'')+
+        '<div class="ecard-reason">'+esc(reason)+'</div></div>'+
+        '<div class="ecard-qty">'+qty+'<small>'+g.items.length+' '+(g.items.length===1?'size':'sizes')+'</small></div>'+
+        '<span class="ecard-chev">›</span>';
+      c.onclick=function(){ beginPurge(); };
+      lb.appendChild(c);
+    });
+  }
+  function allCatRows(){ var seen={},out=[]; CATS.filter(function(c){return cpCats[c];}).forEach(function(c){catRows(c).forEach(function(r){var k=r['SKU'];if(seen[k])return;seen[k]=1;var o=Object.assign({},r);o._cat=c;out.push(o);});}); return out; }
+  function groupByParent(rows){ var map={},order=[]; rows.forEach(function(r){var n=r['Parent Name']||'—';if(!map[n]){map[n]={name:n,items:[]};order.push(n);}map[n].items.push(r);}); return order.map(function(n){return map[n];}); }
+  function uniq(a){var s=[];a.forEach(function(x){if(s.indexOf(x)<0)s.push(x);});return s;}
+
+  el('da-change').onclick=function(){ openStorePicker(); };
+
+  /* -------- Begin purge flow: How-to → list picker -------- */
+  function beginPurge(){ cameFromBegin=true; openHowto(); }
+  function openHowto(){ el('howtoWrap').classList.add('on'); }
+  function closeHowto(){ el('howtoWrap').classList.remove('on'); }
+  function gotIt(){ closeHowto(); if(cameFromBegin){ cameFromBegin=false; setTimeout(function(){ renderPicker(); openSheet('picker'); },160); } }
+
+  function renderPicker(){
+    var b=el('picker-list'); if(!b) return; b.innerHTML='';
+    var descs={'One Off':'Broken sizes that won’t be restocked soon. Purge them.','Non Moving':'Items that aren’t selling at your store. Purge them.','Slow Moving':'Items selling slowly. Review and purge.','Seasonal':'Off-season items. Purge them.'};
+    CATS.forEach(function(c){ if(!cpCats[c])return; var r=document.createElement('div');r.className='cell';r.style.cursor='pointer';r.onclick=function(){pick(c);};r.innerHTML='<div style="font-weight:700">'+c+'</div><div class="preason">'+(descs[c]||'')+'</div>';b.appendChild(r);});
+    var ad=document.createElement('div');ad.className='cell';ad.style.cursor='pointer';ad.onclick=function(){pick('Free Purge');};ad.innerHTML='<div style="font-weight:700">Free Purge</div><div class="preason">Purge any items without following a list.</div>';b.appendChild(ad);
+  }
+
+  /* -------- start a scan session -------- */
+  function pick(cat){
+    curCat=cat; el('scan-title').textContent=cat;
+    curRows = (cat==='Free Purge') ? [] : catRows(cat).map(function(r){return Object.assign({},r);});
+    curRows.forEach(function(r){ r._target=rowTarget(r); r._packed=0; r._excluded=false; });
+    boxes=[{id:1}]; activeBox=0; scanTab='list'; undoStack=[]; camOn=false;
+    if(DEMO){ camOn=true; demoQueue=[]; buildDemoQueue(); }
+    closeSheets();
+    setTimeout(function(){ go('scan'); renderScan(); },240);
+  }
+
+  /* -------- scan rendering -------- */
+  function boxCount(b){ var n=0; curRows.forEach(function(r){ (r._boxUnits&&r._boxUnits[b]) && (n+=r._boxUnits[b]); }); return n; }
+  function totalPacked(){ var n=0; curRows.forEach(function(r){ n+=(r._packed||0); }); return n; }
+  function renderScan(){ renderBoxStrip(); renderScanBody(); updateBar();
+    var fnd=el('finder'); if(fnd) fnd.style.display=camOn?'flex':'none';
+    if(DEMO){ var fc=el('finder-cap'); if(fc && !scanActive) fc.textContent='Tap here to simulate a scan (or tap the camera icon to scan a real barcode)'; } }
+
+  function renderBoxStrip(){
+    var s=el('boxstrip'); s.innerHTML='';
+    boxes.forEach(function(bx,i){
+      var t=document.createElement('div');t.className='boxtab'+(i===activeBox?' on':'');
+      t.innerHTML='Box '+bx.id+' <span class="cnt">'+boxCount(i)+'</span>';
+      t.onclick=function(){activeBox=i;renderScan();};
+      s.appendChild(t);
+    });
+    if(boxes.length<10){ var add=document.createElement('div');add.className='boxtab add';add.innerHTML='+ Add Box';add.onclick=function(){boxes.push({id:boxes.length+1});activeBox=boxes.length-1;renderScan();};s.appendChild(add); }
+    var cam=document.createElement('div');cam.className='cambtn'+((DEMO?scanActive:camOn)?' on':'');cam.title=DEMO?'Use the real camera to scan a barcode':'Toggle camera';
+    cam.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+    cam.onclick=toggleCamera;
+    s.appendChild(cam);
+  }
+
+  function setTab(t){ scanTab=t; document.querySelectorAll('#scan .seg .o').forEach(function(o){o.classList.remove('on');}); el(t==='list'?'tab-list':'tab-box').classList.add('on'); renderScanBody(); }
+
+  function renderScanBody(){
+    var totalSizes=curRows.filter(function(r){return !r._excluded;}).length;
+    var doneSizes=curRows.filter(function(r){return !r._excluded && (r._packed||0)>=r._target;}).length;
+    el('tp-count').textContent=doneSizes+'/'+totalSizes;
+    el('cb-count').textContent=boxCount(activeBox);
+    var b=el('scanbody'); b.innerHTML='';
+    if(scanTab==='box'){ renderBoxContents(b); updateBar(); return; }
+    /* To Purge: grouped parents with remaining (or excluded) sizes */
+    var groups=groupByParent(curRows.filter(function(r){var rem=r._target-(r._packed||0);return rem>0||r._excluded;}));
+    if(!groups.length){ b.innerHTML='<div class="empty">'+(curCat==='Free Purge'?'Scan any item to add it to this purge.':'All items scanned ✓')+'</div>'; return; }
+    groups.forEach(function(g){
+      var remQty=g.items.reduce(function(s,r){return s+(r._excluded?0:Math.max(0,r._target-(r._packed||0)));},0);
+      var reason=uniq(g.items.map(function(r){return displayReason(r['Reason']);})).join(' · ');
+      var card=document.createElement('div');card.className='pcard';
+      var h='<div class="pcard-h"><div class="pname">'+esc(g.name)+'<div class="preason">'+esc(reason)+'</div></div>'+
+            '<div class="pqty"><b>'+remQty+'</b><small>'+g.items.length+' '+(g.items.length===1?'size':'sizes')+'</small></div></div>';
+      var rows='';
+      g.items.forEach(function(r){
+        var idx=curRows.indexOf(r);
+        var rem=r._target-(r._packed||0);
+        if(r._excluded){ rows+='<div class="srow excl"><span class="ssize">'+esc(r['Size'])+'</span><div class="scodes"><div class="ssku">'+esc(r['SKU'])+'</div><div class="supc"><span class="excltag">Excluded</span>'+(r._exclReason?' · '+esc(r._exclReason):'')+'</div></div><button class="exclb" onclick="unexclude('+idx+')" title="Re-include"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg></button></div>'; return; }
+        if(rem<=0) return;
+        rows+='<div class="srow" onclick="tapAdd('+idx+')">'+
+          '<span class="ssize">'+esc(r['Size'])+'</span><span class="smult">×'+rem+'</span>'+
+          '<div class="scodes"><div class="ssku">'+esc(r['SKU'])+'</div>'+
+          (r['UPC']?'<div class="supc"><span>'+esc(r['UPC'])+'</span><button class="copyb" onclick="event.stopPropagation();copyUPC(\''+esc(r['UPC'])+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>':'')+
+          '</div>'+
+          '<button class="exclb" onclick="event.stopPropagation();exclude('+idx+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>'+
+        '</div>';
+      });
+      card.innerHTML=h+rows;
+      b.appendChild(card);
+    });
+  }
+
+  function renderBoxContents(b){
+    var items=[];
+    curRows.forEach(function(r){ if(r._boxUnits&&r._boxUnits[activeBox]>0) items.push({r:r,q:r._boxUnits[activeBox]}); });
+    if(!items.length){ b.innerHTML='<div class="empty">Box '+boxes[activeBox].id+' is empty. Scan or tap items to add them.</div>'; return; }
+    items.forEach(function(it){
+      var idx=curRows.indexOf(it.r);
+      var card=document.createElement('div');card.className='srow';card.style.marginTop='8px';
+      card.innerHTML='<span class="ssize">'+esc(it.r['Size'])+'</span><span class="smult">×'+it.q+'</span>'+
+        '<div class="scodes"><div class="ssku">'+esc(it.r['Parent Name'])+'</div><div class="supc">'+esc(it.r['SKU'])+'</div></div>'+
+        '<button class="exclb" onclick="removeFromBox('+idx+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg></button>';
+      b.appendChild(card);
+    });
+  }
+
+  function updateBar(){ var n=totalPacked(); var btn=el('confirmBtn'); btn.disabled=n<1; btn.textContent='✓ Confirm Purge'+(n?' · '+n:''); }
+
+  /* -------- add / remove units -------- */
+  function tapAdd(idx){ addUnit(idx,true); }
+  function addUnit(idx,fromTap){
+    var r=curRows[idx]; if(!r||r._excluded) return;
+    var rem=r._target-(r._packed||0);
+    if(rem<=0){ toast('Already complete · '+r['Size']); return; }
+    r._packed=(r._packed||0)+1;
+    if(!r._boxUnits) r._boxUnits={};
+    r._boxUnits[activeBox]=(r._boxUnits[activeBox]||0)+1;
+    undoStack.push(idx);
+    flash();
+    toast((r['Parent Name']||'')+' · '+r['Size']+' → Box '+boxes[activeBox].id);
+    renderScan();
+  }
+  function removeFromBox(idx){
+    var r=curRows[idx]; if(!r||!r._boxUnits||!r._boxUnits[activeBox]) return;
+    r._boxUnits[activeBox]--; r._packed=Math.max(0,(r._packed||0)-1);
+    if(r._boxUnits[activeBox]<=0) delete r._boxUnits[activeBox];
+    renderScan();
+  }
+  function undoLast(){ if(!undoStack.length){toast('Nothing to undo');return;} var idx=undoStack.pop(); var r=curRows[idx]; if(r&&r._packed>0){ r._packed--; if(r._boxUnits&&r._boxUnits[activeBox]){r._boxUnits[activeBox]--; if(r._boxUnits[activeBox]<=0)delete r._boxUnits[activeBox];} } renderScan(); }
+  /* Exclude reasons — exact set from ptm-app source (lib/scan/offlist.ts EXCLUDE_REASONS) */
+  var EXCL_REASONS=['Still selling','Item not found','Recently restocked','On customer hold / reserved','On display / mannequin','Other (add a comment)'];
+  function exclude(idx){
+    var r=curRows[idx]; el('excl-sub').textContent=(r['Parent Name']||'')+' · '+r['Size']+' — why keep it back?';
+    var oth=el('excl-other'); oth.style.display='none'; oth.value='';
+    var b=el('excl-reasons'); b.innerHTML='';
+    EXCL_REASONS.forEach(function(rs){
+      var c=document.createElement('div');c.className='cell row';c.style.cursor='pointer';
+      c.innerHTML='<span>'+rs+'</span><span class="chev">›</span>';
+      c.onclick=function(){
+        if(rs.indexOf('Other')===0){ oth.style.display='block'; oth.focus();
+          /* second tap on Other confirms with the comment */
+          c.onclick=function(){ doExclude(idx, oth.value.trim()?('Other: '+oth.value.trim()):'Other'); };
+          return;
+        }
+        doExclude(idx,rs);
+      };
+      b.appendChild(c);
+    });
+    openSheet('exclreason');
+  }
+  function doExclude(idx,reason){ curRows[idx]._excluded=true; curRows[idx]._exclReason=reason; closeSheets(); renderScan(); toast('Excluded · '+reason); }
+  function unexclude(idx){ curRows[idx]._excluded=false; curRows[idx]._exclReason=''; renderScan(); }
+  function copyUPC(u){ try{ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(u);toast('Barcode copied');}else{toast(u);} }catch(e){toast(u);} }
+
+  /* -------- camera scanning (ZXing) -------- */
+  var codeReader=null, scanActive=false, lastCode='', lastTime=0;
+  function ensureZX(cb){ if(window.ZXing){cb();return;} var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js'; s.onload=cb; s.onerror=cb; document.head.appendChild(s); }
+  function toggleCamera(){
+    if(DEMO){ /* finder stays visible for tap-to-simulate; camera button toggles the REAL camera */
+      if(scanActive){ stopScanner(); el('finder-cap').textContent='Tap here to simulate a scan'; }
+      else { startScanner(); }
+      renderBoxStrip(); return;
+    }
+    if(camOn){ camOn=false; stopScanner(); el('finder').style.display='none'; renderBoxStrip(); }
+    else { camOn=true; el('finder').style.display='flex'; renderBoxStrip(); startScanner(); }
+  }
+  function startScanner(){
+    ensureZX(function(){
+      if(!window.ZXing){ el('finder-cap').textContent='Camera unavailable — tap items to add.'; return; }
+      try{
+        if(!codeReader) codeReader=new ZXing.BrowserMultiFormatReader();
+        codeReader.decodeFromVideoDevice(null,'scan-video',function(result){ if(result) onScan(result.getText()); })
+          .then(function(){ el('scan-video').style.display='block'; el('reticle').style.opacity='.55'; el('finder-cap').textContent='Point at a barcode'; scanActive=true; })
+          .catch(function(){ el('finder-cap').textContent='Camera unavailable. Use manual entry below.'; scanActive=false; });
+      }catch(e){ el('finder-cap').textContent='Camera unavailable. Use manual entry below.'; scanActive=false; }
+    });
+  }
+  function stopScanner(){ if(codeReader){ try{codeReader.reset();}catch(e){} } scanActive=false; var v=el('scan-video'); if(v)v.style.display='none'; var rt=el('reticle'); if(rt)rt.style.opacity='1'; }
+  function onFinderTap(){ if(DEMO){ if(scanActive) return; /* real camera running — it handles scans */ demoScan(); return; } if(!scanActive) startScanner(); }
+
+  /* ---- DEMO: simulated scanning ---- */
+  function buildDemoQueue(){
+    demoQueue=[];
+    var rows=(SD&&SD.data)||[];
+    var onList=curRows.filter(function(r){return !r._offlist;}).map(function(r){return String(r['UPC']||r['SKU']||'');}).filter(Boolean);
+    var staple=rows.find(function(r){return (r['Reason']||'').trim()==='Staple';});
+    var off=rows.find(function(r){ return (r['Reason']||'').trim()!=='Staple' && (parseFloat(r['Store Onhand'])||0)>0 && !curRows.some(function(c){return c['SKU']===r['SKU'];}); });
+    var q=[];
+    if(onList[0])q.push(onList[0]);
+    if(onList[1])q.push(onList[1]);
+    if(staple)q.push(String(staple['UPC']||staple['SKU']));           /* → staple safeguard */
+    if(onList[2])q.push(onList[2]);
+    if(off)q.push(String(off['UPC']||off['SKU']));                    /* → off-list (SG6) */
+    q.push('000000000000');                                          /* → NOT AVAILABLE */
+    onList.slice(3).forEach(function(c){q.push(c);});
+    demoQueue=q;
+  }
+  function demoScan(){
+    if(!demoQueue.length) buildDemoQueue();
+    if(!demoQueue.length){ toast('Nothing left to scan'); return; }
+    onScan(demoQueue.shift());
+  }
+  function onScan(code){
+    var now=Date.now(); if(code===lastCode && now-lastTime<1600) return; lastCode=code; lastTime=now;
+    flash();
+    var rows=(SD&&SD.data)||[];
+    var row=rows.find(function(r){return String(r['UPC']||'')===String(code) || String(r['SKU']||'')===String(code);});
+    if(!row){ /* Not on system → NOT AVAILABLE TO PURGE (Brightpearl shows 0) */
+      openNotAvailable({name:'Unknown barcode '+code, size:'', sku:code, upc:code, onList:false, safeguard:'Not on system'}); return; }
+    var reason=(row['Reason']||'').trim();
+    if(reason==='Staple'){ el('staple-msg').textContent='"'+(row['Parent Name']||'This item')+'" is a core staple, so it can’t be purged without Ops approval.'; flagCtx={name:row['Parent Name']||'',size:row['Size']||'',safeguard:'Staple'}; openSheet('staple'); return; }
+    var idx=-1; for(var i=0;i<curRows.length;i++){ if(curRows[i]['SKU']===row['SKU']){ idx=i; break; } }
+    if(idx<0){ /* In catalog but not on this store's list → SG6 off-list */
+      openOfflist(row); return; }
+    tryAddUnit(idx);
+  }
+
+  /* On-list add with OH over-count guard (inventory more than Brightpearl) */
+  function tryAddUnit(idx){
+    var r=curRows[idx]; if(!r||r._excluded) return;
+    var oh=parseInt(r['Store Onhand'])||0;
+    if((r._packed||0)+1 > oh){ /* physical exceeds Brightpearl on-hand */
+      openNotAvailable({name:r['Parent Name']||'',size:r['Size']||'',sku:r['SKU']||'',upc:r['UPC']||'',onList:true,safeguard:'Inventory mismatch (SG3)',oh:oh}); return; }
+    addUnit(idx,false);
+  }
+
+  /* NOT AVAILABLE TO PURGE sheet — Brightpearl 0/over-count → how many → flag Ops */
+  function openNotAvailable(ctx){
+    el('notsys-name').textContent=ctx.name||ctx.sku||'—';
+    el('notsys-meta').textContent=(ctx.size?'Size '+ctx.size+' · ':'')+(ctx.upc||ctx.sku||'');
+    el('notsys-msg').textContent=ctx.oh!=null?('Brightpearl shows '+ctx.oh+' on hand here.'):'Brightpearl shows 0 on hand here.';
+    el('notsys-qty').value=1;
+    flagCtx=ctx;
+    openSheet('notsys');
+  }
+
+  /* SG6 off-list */
+  var offlistRow=null;
+  function openOfflist(row){
+    offlistRow=row;
+    el('offlist-name').textContent=row['Parent Name']||row['SKU']||'—';
+    el('offlist-meta').textContent=(row['Size']?'Size '+row['Size']+' · ':'')+(row['UPC']||row['SKU']||'');
+    el('offlist-reason').value=''; el('offlist-other').style.display='none'; el('offlist-other').value='';
+    openSheet('offlist');
+  }
+  function offlistReasonChange(){ el('offlist-other').style.display=(el('offlist-reason').value==='Other')?'block':'none'; }
+  function addOfflist(){
+    if(!offlistRow) return;
+    var sel=el('offlist-reason').value;
+    if(!sel){ toast('Pick a reason'); return; }
+    var reason = sel==='Other' ? (el('offlist-other').value.trim()||'Other') : sel;
+    var o=Object.assign({},offlistRow); o._target=1; o._packed=1; o._excluded=false; o._offlist=true; o._boxUnits={}; o._boxUnits[activeBox]=1; o._exclReason=reason;
+    curRows.push(o); undoStack.push(curRows.length-1);
+    closeSheets(); flagCtx={name:offlistRow['Parent Name']||'',size:offlistRow['Size']||'',safeguard:'Off-list (SG6): '+reason}; offlistRow=null;
+    toast('Added off-transfer · flagged Ops'); renderScan();
+  }
+
+  /* -------- safeguards → flag -------- */
+  function flagFromStaple(){ closeSheets(); flagCtx=flagCtx||{}; flagCtx.prefill='Store believes "'+(flagCtx.name||'this item')+'" should be purgeable. Please review staple status.'; openFlag(); }
+  function flagFromNotsys(){ var q=parseInt(el('notsys-qty').value)||1; closeSheets(); flagCtx=flagCtx||{}; flagCtx.prefill='Store physically has '+q+' on hand; Brightpearl shows 0 for '+(flagCtx.name||'this item')+'. Added to the box off-transfer — please correct the count.'; openFlag(); }
+  function openFlag(){ el('flag-sub').textContent=((flagCtx&&flagCtx.name)||'')+((flagCtx&&flagCtx.size)?' · '+flagCtx.size:'')+' — describe the issue for Ops.'; el('flag-note').value=(flagCtx&&flagCtx.prefill)||''; openSheet('flagops'); }
+  function submitFlag(){ closeSheets(); toast('Flagged for Ops review ✓'); }
+
+  /* -------- confirm -------- */
+  function confirmPurge(){
+    var n=totalPacked(); if(!n) return;
+    /* SG12 — on-list items left unscanned must get a reason before submit */
+    var pending=curRows.filter(function(r){return !r._excluded && !r._offlist && (r._packed||0) < r._target;});
+    if(pending.length){ openUnscanned(pending); return; }
+    finalizeSubmit();
+  }
+  function openUnscanned(list){
+    var b=el('unscanned-list'); b.innerHTML='';
+    list.forEach(function(r){
+      var idx=curRows.indexOf(r);
+      var opts=EXCL_REASONS.map(function(rs){return '<option>'+esc(rs)+'</option>';}).join('');
+      var c=document.createElement('div'); c.className='cell';
+      c.innerHTML='<div style="font-weight:600;font-size:14px">'+esc(r['Parent Name']||'')+' · '+esc(r['Size']||'')+'</div>'+
+        '<select class="numfld us-reason" data-idx="'+idx+'" style="width:100%;text-align:left;background:#fff;margin-top:7px"><option value="" disabled selected>— reason —</option>'+opts+'</select>';
+      b.appendChild(c);
+    });
+    openSheet('unscanned');
+  }
+  function submitAfterReview(){
+    var sels=document.querySelectorAll('#unscanned-list .us-reason'); var ok=true;
+    sels.forEach(function(s){ var idx=parseInt(s.dataset.idx); var v=s.value; if(!v){ ok=false; s.style.borderColor='var(--danger)'; return; } curRows[idx]._excluded=true; curRows[idx]._exclReason=(v.indexOf('Other')===0?'Other':v); });
+    if(!ok){ toast('Give every item a reason'); return; }
+    closeSheets(); finalizeSubmit();
+  }
+  function finalizeSubmit(){
+    var n=totalPacked(); var nb=boxes.filter(function(bx,i){return boxCount(i)>0;}).length||1;
+    el('doneSub').textContent=n+' unit'+(n===1?'':'s')+' · '+nb+' box'+(nb===1?'':'es')+' · '+curCat+' · '+STORE;
+    go('success');
+  }
+
+  /* -------- sheets / active-purge -------- */
+  function openSheet(id){el('scrim').classList.add('on');el(id).classList.add('up');}
+  function closeSheets(){el('scrim').classList.remove('on');['picker','storepick','staple','notsys','flagops','active','exclreason','offlist','unscanned'].forEach(function(s){el(s).classList.remove('up');});}
+  function resumeActive(){ closeSheets(); go('scan'); }
+  function startNewActive(){ closeSheets(); renderPicker(); openSheet('picker'); }
+  function deleteActive(){ closeSheets(); toast('Purge deleted'); }
+
+  /* ===================== SCM CONTROL PANEL ===================== */
+  var PERIODS=[15,20,25,30,45,60,90];
+  var cpCats={'One Off':true,'Non Moving':true,'Slow Moving':true,'Seasonal':true};
+  var cpPeriod=45, cpExclByStore={}, cpAll=[], cpCur=null, cpInit=false;
+  function cpStatus(m){el('cp-status').textContent=m||'';}
+  function cpRenderCats(){var b=el('cp-cats');b.innerHTML='';CATS.forEach(function(c){var row=document.createElement('div');row.className='cell row';var l=document.createElement('span');l.className='klabel';l.textContent=c;var w=document.createElement('label');w.className='csw';w.innerHTML='<input type="checkbox"'+(cpCats[c]?' checked':'')+'><span class="tr"></span><span class="kn"></span>';var inp=w.querySelector('input');inp.onchange=function(){cpCats[c]=inp.checked;renderBrowse();};row.appendChild(l);row.appendChild(w);b.appendChild(row);});}
+  function cpRenderPeriod(){var b=el('cp-period');b.innerHTML='';PERIODS.forEach(function(d){var p=document.createElement('div');p.className='cpill'+(d===cpPeriod?' on':'');p.textContent=d+'D';p.onclick=function(){cpPeriod=d;cpRenderPeriod();};b.appendChild(p);});}
+  function cpItem(name,rm){var c=document.createElement('div');c.className='cell row';var s=document.createElement('span');s.className='klabel';s.textContent=name;var x=document.createElement('button');x.className='xdel';x.type='button';x.textContent='×';x.onclick=rm;c.appendChild(s);c.appendChild(x);return c;}
+  function cpRenderAll(){var b=el('cp-allList');b.innerHTML='';if(!cpAll.length){b.innerHTML='<div class="empty">No all-store exclusions.</div>';return;}cpAll.forEach(function(n,i){b.appendChild(cpItem(n,function(){cpAll.splice(i,1);cpRenderAll();}));});}
+  function cpRenderStore(){var b=el('cp-storeList2');b.innerHTML='';var l=cpExclByStore[cpCur]||[];if(!l.length){b.innerHTML='<div class="empty">No exclusions for this store.</div>';}else{l.forEach(function(n,i){b.appendChild(cpItem(n,function(){l.splice(i,1);if(!l.length)delete cpExclByStore[cpCur];cpRenderStore();}));});}cpRenderSummary();}
+  function cpRenderSummary(){var b=el('cp-summary');b.innerHTML='';var ss=Object.keys(cpExclByStore).filter(function(s){return (cpExclByStore[s]||[]).length;}).sort();if(!ss.length){b.innerHTML='<div class="lbl">No stores have per-store exclusions yet.</div>';return;}var lb=document.createElement('div');lb.className='lbl';lb.textContent='Stores with exclusions (tap to edit):';b.appendChild(lb);ss.forEach(function(s){var c=document.createElement('span');c.className='schip';c.innerHTML=esc(s)+' <b>'+cpExclByStore[s].length+'</b>';c.onclick=function(){cpCur=s;el('cp-storeSel').value=s;cpRenderStore();};b.appendChild(c);});}
+  function cpRenderDry(list){var b=el('cp-dry');b.innerHTML='';(list||[]).forEach(function(s){var c=document.createElement('div');c.className='cell row';var l=document.createElement('span');l.className='klabel';l.textContent=s;var w=document.createElement('label');w.className='csw';w.innerHTML='<input type="checkbox"><span class="tr"></span><span class="kn"></span>';w.querySelector('input').dataset.store=s;c.appendChild(l);c.appendChild(w);b.appendChild(c);});}
+  function cpFill(id,arr){var dl=el(id);dl.innerHTML='';arr.forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);});}
+  function cpProductsFromSD(){var out=[];if(SD&&SD.data){var seen={};SD.data.forEach(function(x){var p=(x['Parent Name']||'').trim();if(p&&!seen[p]){seen[p]=1;out.push(p);}});}return out;}
+  function openSettings(){
+    go('settings');
+    if(cpInit) return; cpInit=true;
+    var stores=(IDX&&IDX.stores)||[];
+    cpCur=STORE||stores[0]||null;
+    cpRenderCats(); cpRenderPeriod(); cpRenderAll(); cpRenderStore(); cpRenderDry(stores);
+    cpFill('cp-storeList',stores); cpFill('cp-prodList',cpProductsFromSD());
+    if(cpCur) el('cp-storeSel').value=cpCur;
+    el('cp-storeSel').onchange=function(){var v=this.value.trim();if(stores.indexOf(v)<0)return;cpCur=v;cpRenderStore();};
+    el('cp-allAdd').onclick=function(){var i=el('cp-allSearch'),v=i.value.trim();if(!v)return;if(cpAll.indexOf(v)<0){cpAll.push(v);cpRenderAll();}i.value='';};
+    el('cp-allReset').onclick=function(){cpAll=[];cpRenderAll();};
+    el('cp-storeAdd').onclick=function(){var i=el('cp-storeSearch'),v=i.value.trim();if(!v||!cpCur)return;if(!cpExclByStore[cpCur])cpExclByStore[cpCur]=[];if(cpExclByStore[cpCur].indexOf(v)<0){cpExclByStore[cpCur].push(v);cpRenderStore();}i.value='';};
+    el('cp-storeReset').onclick=function(){if(!Object.keys(cpExclByStore).length){cpStatus('No per-store exclusions to reset.');return;}if(!confirm('Remove per-store exclusions for ALL stores?'))return;cpExclByStore={};cpRenderStore();};
+    el('cp-preview').onclick=function(){
+      var stores2=Array.prototype.map.call(document.querySelectorAll('#cp-dry input:checked'),function(c){return c.dataset.store;});
+      var params={categories:cpCats,periodDays:cpPeriod,recentDays:parseInt(el('cp-recentDays').value)||30,incomingDays:parseInt(el('cp-incomingDays').value)||50,sizePct:(parseFloat(el('cp-sizePct').value)||50)/100,slowCut:parseInt(el('cp-slowCut').value)||2,exclusions:cpAll,exclByStore:cpExclByStore,dryRunStores:stores2};
+      if([30,45,60,90].indexOf(cpPeriod)>=0)params.periodKey='L'+cpPeriod;
+      var pre=el('cp-pre');pre.textContent=JSON.stringify(params,null,2);pre.style.display='block';pre.scrollIntoView({behavior:'smooth',block:'nearest'});
+      cpStatus('Preview only — demo, nothing saved.');
+    };
+    fetch(WEBAPP+'?t='+Date.now()).then(function(r){return r.json();}).then(function(s){
+      if(!s)return;
+      if(s.periodDays){cpPeriod=parseInt(s.periodDays)||45;cpRenderPeriod();}
+      if(s.recentDays!=null)el('cp-recentDays').value=s.recentDays;
+      if(s.incomingDays!=null)el('cp-incomingDays').value=s.incomingDays;
+      if(s.sizePct!=null)el('cp-sizePct').value=Math.round(s.sizePct*100);
+      if(s.slowCutoff!=null)el('cp-slowCut').value=s.slowCutoff;
+      cpStatus('Defaults from web app · demo — changes not saved.');
+    }).catch(function(){cpStatus('Web app unreachable — showing defaults · demo.');});
+  }
+</script>
+</body>
+</html>
